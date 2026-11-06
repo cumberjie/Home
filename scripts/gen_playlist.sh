@@ -27,7 +27,7 @@ REPO_DIR=${REPO_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 cd "$REPO_DIR"
 
 IN=${1:-iptv/gx.m3u}
-OUT=${2:-iptv/0}
+OUT=${2:-iptv/0.m3u}
 
 # 相对路径按调用者当前目录解析，避免被 cd 影响
 case "$IN" in
@@ -80,8 +80,10 @@ BEGIN { skip = 0 }
 # URL 行
 /^[Hh][Tt][Tt][Pp]/ {
   if (skip) { skip = 0; next }
-  # 规则3：末尾追加 ?$<画质>
-  print $0 "?$" q
+  # 规则3：去掉原有的 ?servicetype=1 查询串，末尾改为 $<画质>
+  # 实测：?servicetype=1$超清 → 404 ；$超清 → 200，分片可下载
+  sub(/\?servicetype=1$/, "")
+  print $0 "$" q
   next
 }
 
