@@ -67,6 +67,20 @@ jobs:
           chmod +x scripts/sync.sh
           sh scripts/sync.sh
 
+      - name: Generate playlist (iptv/0)
+        run: |
+          chmod +x scripts/gen_playlist.sh
+          sh scripts/gen_playlist.sh
+          # 只有内容变化才提交
+          if git diff --quiet -- iptv/0; then
+            echo "iptv/0 无变化"
+          else
+            git add iptv/0
+            git commit -m "gen: 重新生成 iptv/0 ($(date -u +%Y-%m-%d))"
+            git push origin HEAD:main
+            echo "iptv/0 已更新并推送"
+          fi
+
       - name: Upload snapshots
         if: always()
         uses: actions/upload-artifact@v4
