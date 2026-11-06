@@ -44,6 +44,11 @@ fail() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || fail "找不到 git"
 
+# 关键：关闭路径转义。默认 core.quotepath=true 时，中文/特殊字符路径会被
+# 输出为 "iptv/\350\207\252..." 这样的八进制转义，后续按文件名恢复必然失败，
+# 删除保护会静默失效。只对本仓库设本地配置，不污染全局。
+git config core.quotepath false
+
 # 身份兜底：仅当仓库未配置时用环境变量，不写全局配置
 if ! git config user.email >/dev/null 2>&1; then
   export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-gh-home-sync}"
@@ -72,13 +77,13 @@ log "本地 ${PREV%????????} → 上游 ${UP%????????}"
 # 以共同祖先为基准算"上游删了什么"，只保留本地确实有的，避免把本地独有文件误报成上游删除
 BASE=$(git merge-base "$PREV" "$UP" 2>/dev/null || echo "$PREV")
 DELETED_FILE=$(mktemp /tmp/sync-del.XXXXXX)
-git diff --name-only --diff-filter=D "$BASE" "$UP" 2>/dev/null | while IFS= read -r f; do
+git -c core.quotepath=false diff --name-only --diff-filter=D "$BASE" "$UP" 2>/dev/null | while IFS= read -r f; do
   [ -n "$f" ] && git cat-file -e "$PREV:$f" 2>/dev/null && printf '%s\n' "$f"
 done > "$DELETED_FILE" || true
 DEL_COUNT=$(wc -l < "$DELETED_FILE" | tr -d ' ')
 
 CHANGED_FILE=$(mktemp /tmp/sync-chg.XXXXXX)
-git diff --name-status "$PREV" "$UP" > "$CHANGED_FILE" || true
+git -c core.quotepath=false diff --name-status "$PREV" "$UP" > "$CHANGED_FILE" || true
 
 log "上游改动：$(grep -c . "$CHANGED_FILE" 2>/dev/null || echo 0) 个路径，其中删除 $DEL_COUNT 个"
 if [ "$DEL_COUNT" -gt 0 ]; then
@@ -95,7 +100,7 @@ log "快照已存：$SNAP ($(wc -c < "$SNAP" | tr -d ' ') 字节)"
 
 # 校验清单：路径 + git blob 哈希 + 大小
 MAN="$BACKUP_DIR/manifest-$TS.txt"
-git ls-tree -r -l "$PREV" | awk -F'\t' '{n=split($1,a," "); printf "%-12s %-10s %s\n", substr(a[3],1,10), a[4], $2}' > "$MAN"
+git -c core.quotepath=false ls-tree -r -l "$PREV" | awk -F'\t' '{n=split($1,a," "); printf "%-12s %-10s %s\n", substr(a[3],1,10), a[4], $2}' > "$MAN"
 log "清单已存：$MAN（$(wc -l < "$MAN" | tr -d ' ') 个文件）"
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -112,7 +117,7 @@ if git merge --no-edit --no-ff -m "$MERGE_MSG" "$UP" >"$MERGE_ERR" 2>&1; then
   log "合并成功（无冲突）"
 else
   # 关键：区分「真冲突」和「其他失败」。没有未合并路径 = 不是冲突
-  UNMERGED=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+  UNMERGED=$(git -c core.quotepath=false diff --name-only --diff-filter=U 2>/dev/null || true)
   if [ -z "$UNMERGED" ]; then
     cat "$MERGE_ERR" >&2
     git merge --abort 2>/dev/null || true
@@ -133,7 +138,7 @@ else
     fi
   done
   # 兜底：仍未解决的，取上游（若上游也没有则保留本地）
-  STILL=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+  STILL=$(git -c core.quotepath=false diff --name-only --diff-filter=U 2>/dev/null || true)
   if [ -n "$STILL" ]; then
     printf '%s\n' "$STILL" | while IFS= read -r f; do
       [ -z "$f" ] && continue
