@@ -173,6 +173,35 @@ while IFS= read -r f; do
   fi
 done < "$DELETED_FILE"
 
+# 4b. 内容清空保护：上游把文件改成 0 字节（不是删除）时，同样视为破坏
+EMPTIED_FILE=$(mktemp /tmp/sync-empty.XXXXXX)
+git -c core.quotepath=false -c core.quotepath=false diff --name-only "$BASE" "$UP" 2>/dev/null | while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if git cat-file -e "$PREV:$f" 2>/dev/null && git cat-file -e "$UP:$f" 2>/dev/null; then
+    OLD_SZ=$(git cat-file -s "$PREV:$f" 2>/dev/null || echo 0)
+    NEW_SZ=$(git cat-file -s "$UP:$f" 2>/dev/null || echo 0)
+    if [ "$NEW_SZ" -eq 0 ] && [ "$OLD_SZ" -gt 0 ]; then
+      printf '%s\n' "$f"
+    fi
+  fi
+done > "$EMPTIED_FILE" || true
+
+EMPTY_COUNT=0
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [ -e "$f" ] && [ ! -s "$f" ]; then
+    if git checkout "$PREV" -- "$f" 2>/dev/null; then
+      git add -- "$f" 2>/dev/null || true
+      EMPTY_COUNT=$((EMPTY_COUNT + 1))
+      log "  [保护] 上游清空了 $f，已恢复原内容"
+    fi
+  fi
+done < "$EMPTIED_FILE"
+
+if [ "$EMPTY_COUNT" -gt 0 ]; then
+  git commit -m "protect: 恢复被上游清空的 $EMPTY_COUNT 个文件 ($(date -u '+%Y-%m-%d'))" >/dev/null 2>&1 || true
+fi
+
 if [ "$RESTORED_COUNT" -gt 0 ]; then
   while IFS= read -r f; do
     [ -n "$f" ] && git add -- "$f" 2>/dev/null
@@ -217,7 +246,7 @@ while [ "$i" -le 3 ]; do
   i=$((i + 1))
 done
 
-rm -f "$DELETED_FILE" "$CHANGED_FILE" "$RESTORED_FILE"
+rm -f "$DELETED_FILE" "$CHANGED_FILE" "$RESTORED_FILE" "$EMPTIED_FILE"
 
 if [ "$PUSHED" -eq 1 ]; then
   log "✅ 已推送到 $ORIGIN/$BRANCH（新 HEAD $(git rev-parse --short HEAD)）"

@@ -11,8 +11,9 @@ name: Sync upstream (protect deletions)
 
 on:
   schedule:
-    # 上游约每天 UTC 22:08 提交（北京时间次日 06:08），排在其后
-    - cron: '30 23 * * *'
+    # 上游约每天 UTC 22:08 提交（北京时间次日 06:08），这里每 4 小时跟一次，
+    # 上游偶尔改时间也不会漏。脚本是幂等的：无更新就直接退出，不产生提交。
+    - cron: '17 */4 * * *'
   workflow_dispatch:
 
 permissions:
