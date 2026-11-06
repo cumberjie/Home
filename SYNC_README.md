@@ -14,6 +14,44 @@
 | **把文件清空** | ⚠️ **自动恢复原内容** |
 | 内容与本仓库冲突 | 取上游内容（删除仍不生效） |
 
+## 播放器专用列表 `iptv/0`
+
+每次同步后自动从 `iptv/gx.m3u` 重新生成，做了三件事：
+
+1. **删掉所有含 `4K` 的频道**（电视播不了）
+2. **去掉 `tvg-name` 属性**（播放器不识别）
+3. **地址末尾追加 `?$画质`**，画质取自原 `tvg-name` 的最后一段
+
+以 CCTV-1 超清为例：
+
+```
+原： #EXTINF:-1 tvg-name="CCTV-1 超清" tvg-logo="..." group-title="央视热播",CCTV-1
+     http://cdn.../index.m3u8?servicetype=1
+
+新： #EXTINF:-1 tvg-logo="..." group-title="央视热播",CCTV-1
+     http://cdn.../index.m3u8?servicetype=1?$超清
+```
+
+> ⚠️ 注意结尾是**两个问号**：`?servicetype=1` 是移动 CDN 的必需参数，`?$超清` 是播放器要求的画质标记。这是既定格式，不要改。
+
+**播放器填这个地址：**
+```
+https://raw.githubusercontent.com/cumberjie/Home/main/iptv/0
+```
+
+### 画质标签来源
+
+取 `tvg-name` 最后一段，只认四种：`超清` / `高清` / `标清` / `极清`。
+遇到其他结尾（如 `花絮`）会回退成 `高清`。
+
+当前分布：高清 87、超清 35、标清 23、极清 1，共 146 个频道。
+
+### 没有 4K 频道了？
+
+上游目前有且仅有一个 4K 台：`CCTV-16 4K 超清`。如果以后上游加了新的 4K 台，脚本会自动识别并删除，无需改动。
+
+`CCTV-16 超清` 和 `CCTV-16 高清` 是 1080P，会正常保留。
+
 ## 三层备份
 
 1. **历史记录** — 永不 force push、永不改写历史。任何旧版本都能从 commit 历史里找回：
@@ -42,7 +80,10 @@
 
 | 路径 | 作用 |
 |---|---|
-| `scripts/sync.sh` | 同步脚本，本地也能跑 |
+| `iptv/gx.m3u` | 上游原始列表（自动同步） |
+| `iptv/0` | **播放器专用**（自动生成，去 4K / 去 tvg-name / 加画质后缀） |
+| `scripts/sync.sh` | 上游同步脚本 |
+| `scripts/gen_playlist.sh` | 生成 `iptv/0` 的脚本 |
 | `.github/workflows/sync-upstream.yml` | 云端定时任务 |
 | `SYNC_LOG.md` | 同步记录，每次实际同步后追加一行 |
 
