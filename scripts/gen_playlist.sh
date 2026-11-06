@@ -3,7 +3,7 @@
 # gen_playlist.sh — 从 gx.m3u 生成播放器兼容的 0 文件
 #
 # 规则（用户指定）：
-#   1. 删除 tvg-name 中含 4K 的频道（电视播不了）
+#   1. 删除 tvg-name 中含 4K / 8K 的频道（电视播不了）
 #   2. 去掉 tvg-name 属性（播放器不识别）
 #   3. URL 末尾追加 "?$<画质>"，画质取自原 tvg-name 的最后一段
 #      原地址已带 ?servicetype=1，所以结果是两个问号（用户明确要求字面照写）
@@ -63,8 +63,8 @@ BEGIN { skip = 0 }
     name = substr($0, RSTART + 10, RLENGTH - 11)
   }
 
-  # 规则1：含 4K 的整组丢弃（含下一行的 URL）
-  if (name ~ /4K/) {
+  # 规则1：含 4K / 8K 的整组丢弃（电视播不了，大小写都算）
+  if (toupper(name) ~ /4K|8K/) {
     skip = 1
     next
   }
@@ -110,6 +110,6 @@ OUT_CNT=$(grep -c '^#EXTINF' "$OUT" || true)
 echo "生成完成：$OUT"
 echo "  原始频道：$IN_CNT"
 echo "  输出频道：$OUT_CNT"
-echo "  移除 4K ：$((IN_CNT - OUT_CNT))"
+echo "  移除 4K/8K：$((IN_CNT - OUT_CNT))"
 echo "  画质分布："
 grep -o '?\$[^ ]*$' "$OUT" | sort | uniq -c | sed 's/^/    /' || true
