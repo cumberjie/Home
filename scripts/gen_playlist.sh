@@ -71,11 +71,7 @@ BEGIN { skip = 0 }
   }
   skip = 0
 
-  # 规则2：删掉 tvg-name="..." 属性（连同后面的一个空格）
-  if (match($0, /tvg-name="[^"]*" ?/)) {
-    $0 = substr($0, 1, RSTART - 1) substr($0, RSTART + RLENGTH)
-  }
-
+  # 规则2：保留 tvg-name 原样（不再删除）
   q = quality_of(name)
   print $0
   next
