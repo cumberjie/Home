@@ -46,12 +46,11 @@ TMP=$(mktemp /tmp/gen-m3u.XXXXXX)
 
 awk '
 function quality_of(name,   n, a, last) {
-  # 取 tvg-name 最后一段（空格分隔）作为画质标签
+  # 取 tvg-name 最后一段作为后缀，原样使用，不做白名单映射。
+  # 后缀只是给人看的标签，上游出现新画质（花絮/杜比等）也能自动跟上。
   n = split(name, a, " ")
-  last = a[n]
-  # 只认这四种画质；否则回退成 "高清"
-  if (last == "超清" || last == "高清" || last == "标清" || last == "极清") return last
-  return "高清"
+  if (n >= 2) return a[n]
+  return ""
 }
 
 BEGIN { skip = 0 }
@@ -71,7 +70,11 @@ BEGIN { skip = 0 }
   }
   skip = 0
 
-  # 规则2：保留 tvg-name 原样（不再删除）
+  # 规则2：删掉 tvg-name 属性（连同后面的一个空格）
+  if (match($0, /tvg-name="[^"]*" ?/)) {
+    $0 = substr($0, 1, RSTART - 1) substr($0, RSTART + RLENGTH)
+  }
+
   q = quality_of(name)
   print $0
   next
