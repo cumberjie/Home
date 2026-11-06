@@ -45,6 +45,20 @@ jobs:
           git remote add upstream https://github.com/Healer-sys/Home.git 2>/dev/null || \
           git remote set-url upstream https://github.com/Healer-sys/Home.git
 
+      - name: Snapshot tag (永久存档点)
+        run: |
+          # 每天打一个 tag 指向"同步前"的 main。
+          # tag 是零成本的提交引用：不复制文件、不改历史，仓库在它就在。
+          # 已存在则跳过 → 保留当天最早状态，也就是上游改动前的样子。
+          TAG="snap-$(date -u +%Y%m%d)"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "今日快照已存在：$TAG -> $(git rev-parse --short "$TAG")"
+          else
+            git tag "$TAG" HEAD
+            git push origin "refs/tags/$TAG"
+            echo "已创建快照标签：$TAG -> $(git rev-parse --short HEAD)"
+          fi
+
       - name: Run sync
         env:
           BACKUP_DIR: ${{ runner.temp }}/backups

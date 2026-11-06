@@ -69,9 +69,12 @@ fi
 log "本地 ${PREV%????????} → 上游 ${UP%????????}"
 
 # ---------- 1. 算出上游要删/改什么 ----------
-# --diff-filter=D：存在于 PREV(我的现状) 但不存在于 UP(上游新版) 的路径
+# 以共同祖先为基准算"上游删了什么"，只保留本地确实有的，避免把本地独有文件误报成上游删除
+BASE=$(git merge-base "$PREV" "$UP" 2>/dev/null || echo "$PREV")
 DELETED_FILE=$(mktemp /tmp/sync-del.XXXXXX)
-git diff --name-only --diff-filter=D "$PREV" "$UP" > "$DELETED_FILE" || true
+git diff --name-only --diff-filter=D "$BASE" "$UP" 2>/dev/null | while IFS= read -r f; do
+  [ -n "$f" ] && git cat-file -e "$PREV:$f" 2>/dev/null && printf '%s\n' "$f"
+done > "$DELETED_FILE" || true
 DEL_COUNT=$(wc -l < "$DELETED_FILE" | tr -d ' ')
 
 CHANGED_FILE=$(mktemp /tmp/sync-chg.XXXXXX)
@@ -92,13 +95,13 @@ log "快照已存：$SNAP ($(wc -c < "$SNAP" | tr -d ' ') 字节)"
 
 # 校验清单：路径 + git blob 哈希 + 大小
 MAN="$BACKUP_DIR/manifest-$TS.txt"
-git ls-tree -r -l "$PREV" | awk '{printf "%-40s %-10s %s\n", substr($3,1,10), $4, substr($0, index($0,$5))}' > "$MAN"
+git ls-tree -r -l "$PREV" | awk -F'\t' '{n=split($1,a," "); printf "%-12s %-10s %s\n", substr(a[3],1,10), a[4], $2}' > "$MAN"
 log "清单已存：$MAN（$(wc -l < "$MAN" | tr -d ' ') 个文件）"
 
 if [ "$DRY_RUN" = "1" ]; then
   log "DRY_RUN=1，到此为止。上游改动预览："
   head -40 "$CHANGED_FILE"
-  rm -f "$DELETED_FILE" "$CHANGED_FILE" "$RESTORED_FILE"
+  rm -f "$DELETED_FILE" "$CHANGED_FILE"
   exit 0
 fi
 
@@ -193,7 +196,7 @@ git commit -m "log: 同步记录 $(date -u '+%Y-%m-%d')" >/dev/null 2>&1 || true
 # ---------- 6. 推送（永不 force） ----------
 if [ "$SKIP_PUSH" = "1" ]; then
   log "SKIP_PUSH=1，跳过推送。新 HEAD $(git rev-parse --short HEAD)"
-  rm -f "$DELETED_FILE" "$CHANGED_FILE" "$RESTORED_FILE"
+  rm -f "$DELETED_FILE" "$CHANGED_FILE"
   exit 0
 fi
 
