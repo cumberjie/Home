@@ -1,0 +1,79 @@
+name: Sync upstream (protect deletions)
+
+# 作用：定时跟随 Healer-sys/Home 更新，且上游的删除操作不会生效。
+#
+# 三层保护：
+#   1. 永不 force push、永不改写历史 → 任何旧版本都能从 main 的历史里找回
+#   2. 每次合并前打 tar.gz 快照 → 上传为 workflow artifact（保留 90 天）
+#   3. 脚本把被上游删掉的文件重新 checkout 回来 → 删除不生效
+#
+# 手动触发：Actions 页面点 "Run workflow"
+
+on:
+  schedule:
+    # 上游约每天 UTC 22:08 提交（北京时间次日 06:08），排在其后
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 需要完整历史来计算改动与被删文件
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/Healer-sys/Home.git 2>/dev/null || \
+          git remote set-url upstream https://github.com/Healer-sys/Home.git
+
+      - name: Run sync
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/backups
+        run: |
+          chmod +x scripts/sync.sh
+          sh scripts/sync.sh
+
+      - name: Upload snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backups-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/backups/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Run summary
+        if: always()
+        run: |
+          {
+            echo "### 同步结果"
+            echo
+            echo '```'
+            git log --oneline -6 2>&1 || true
+            echo '```'
+            echo
+            if [ -f SYNC_LOG.md ]; then
+              echo "### 最近一次同步记录"
+              echo
+              tail -12 SYNC_LOG.md
+            fi
+          } >> $GITHUB_STEP_SUMMARY
